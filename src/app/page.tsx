@@ -1,12 +1,23 @@
 "use client";
 
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { EscrowsByRoleCards } from "@/components/tw-blocks/escrows/escrows-by-role/cards/EscrowsCards";
 import { InitializeEscrowDialog } from "@/components/tw-blocks/escrows/single-release/initialize-escrow/dialog/InitializeEscrow";
 import { InitializeEscrowDialog as InitializeMultiReleaseEscrowDialog } from "@/components/tw-blocks/escrows/multi-release/initialize-escrow/dialog/InitializeEscrow";
 import { WalletButton } from "@/components/tw-blocks/wallet-kit/WalletButtons";
 import Image from "next/image";
-import { EscrowsBySignerCards } from "@/components/tw-blocks/escrows/escrows-by-signer/cards/EscrowsCards";
+
+const EscrowsBySignerCardsNoSSR = dynamic(
+  () =>
+    import(
+      "@/components/tw-blocks/escrows/escrows-by-signer/cards/EscrowsCards"
+    ).then((m) => m.EscrowsBySignerCards),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 export default function Home() {
   return (
@@ -36,7 +47,7 @@ export default function Home() {
         </div>
 
         <Suspense fallback={null}>
-          <EscrowsBySignerCards />
+          <EscrowsBySignerCardsNoSSR />
         </Suspense>
       </main>
     </div>

@@ -19,6 +19,9 @@ const EscrowsBySignerCardsNoSSR = dynamic(
   }
 );
 
+import Link from "next/link";
+import { Briefcase } from "lucide-react";
+
 export default function Home() {
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
@@ -38,12 +41,20 @@ export default function Home() {
 
         <WalletButton />
       </header>
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <div className="flex w-full mb-4">
-          <div className="flex w-1/6 gap-2">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start w-full">
+        <div className="flex w-full mb-4 justify-between items-center">
+          <div className="flex gap-2">
             <InitializeEscrowDialog />
             <InitializeMultiReleaseEscrowDialog />
           </div>
+
+          <Link
+            href="/service-provider"
+            className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors font-medium"
+          >
+            <Briefcase className="h-4 w-4" />
+            Service Provider Workspace
+          </Link>
         </div>
 
         <Suspense fallback={null}>

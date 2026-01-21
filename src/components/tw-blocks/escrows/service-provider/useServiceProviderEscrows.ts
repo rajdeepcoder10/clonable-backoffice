@@ -78,12 +78,34 @@ export function useServiceProviderEscrows() {
     const qpEng = qp.get("engagementId") || "";
     const qpActive = qp.get("isActive");
     const qpValidateOnChain = qp.get("validateOnChain");
-    const qpType = (qp.get("type") as EscrowType) || "all";
-    const qpStatus = (qp.get("status") as EscrowStatus) || "all";
-    const qpMin = qp.get("minAmount") || "";
-    const qpMax = qp.get("maxAmount") || "";
-    const qpStart = qp.get("startDate");
-    const qpEnd = qp.get("endDate");
+
+    // Validate Enums
+    const rawType = qp.get("type");
+    const allowedTypes = ["single-release", "multi-release", "all"];
+    const qpType = (allowedTypes.includes(rawType || "")
+      ? rawType
+      : "all") as EscrowType;
+
+    const rawStatus = qp.get("status");
+    const allowedStatuses = ["working", "pendingRelease", "released", "resolved", "inDispute", "all"];
+    const qpStatus = (allowedStatuses.includes(rawStatus || "")
+      ? rawStatus
+      : "all") as EscrowStatus;
+
+    // Validate Numbers
+    const rawMin = qp.get("minAmount");
+    const parsedMin = rawMin ? Number(rawMin) : NaN;
+    const qpMin = Number.isFinite(parsedMin) ? rawMin! : "";
+
+    const rawMax = qp.get("maxAmount");
+    const parsedMax = rawMax ? Number(rawMax) : NaN;
+    const qpMax = Number.isFinite(parsedMax) ? rawMax! : "";
+
+    // Validate Dates
+    const rawStart = qp.get("startDate");
+    const dStart = rawStart ? new Date(rawStart) : undefined;
+    const rawEnd = qp.get("endDate");
+    const dEnd = rawEnd ? new Date(rawEnd) : undefined;
 
     setPage(Number.isFinite(qpPage) && qpPage > 0 ? qpPage : 1);
     setOrderBy(
@@ -94,6 +116,7 @@ export function useServiceProviderEscrows() {
     setOrderDirection(qpOrderDir === "asc" ? "asc" : "desc");
     setTitle(qpTitle);
     setEngagementId(qpEng);
+    // Keep boolean/null logic
     setIsActive(qpActive === null ? true : qpActive === "true");
     setValidateOnChain(
       qpValidateOnChain === null ? true : qpValidateOnChain === "true"
@@ -103,8 +126,8 @@ export function useServiceProviderEscrows() {
     setMinAmount(qpMin);
     setMaxAmount(qpMax);
     setDateRange({
-      from: qpStart ? new Date(qpStart) : undefined,
-      to: qpEnd ? new Date(qpEnd) : undefined,
+      from: dStart && !isNaN(dStart.getTime()) ? dStart : undefined,
+      to: dEnd && !isNaN(dEnd.getTime()) ? dEnd : undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -193,6 +216,9 @@ export function useServiceProviderEscrows() {
   }, [dateRange]);
 
   const params = React.useMemo(() => {
+    const validMin = debouncedMinAmount ? Number(debouncedMinAmount) : undefined;
+    const validMax = debouncedMaxAmount ? Number(debouncedMaxAmount) : undefined;
+
     return {
       roleAddress: walletAddress ?? "",
       role,
@@ -203,23 +229,23 @@ export function useServiceProviderEscrows() {
       engagementId: debouncedEngagementId || undefined,
       isActive,
       validateOnChain,
-      type: (type === "all" ? undefined : type) as
+      type: (["single-release", "multi-release"].includes(type) ? type : undefined) as
         | undefined
         | "single-release"
         | "multi-release",
-      status: (status === "all" ? undefined : status) as
+      status: (["working", "pendingRelease", "released", "resolved", "inDispute"].includes(status) ? status : undefined) as
         | undefined
         | "working"
         | "pendingRelease"
         | "released"
         | "resolved"
         | "inDispute",
-      minAmount: debouncedMinAmount ? Number(debouncedMinAmount) : undefined,
-      maxAmount: debouncedMaxAmount ? Number(debouncedMaxAmount) : undefined,
-      startDate: dateRange.from
+      minAmount: (validMin !== undefined && Number.isFinite(validMin)) ? validMin : undefined,
+      maxAmount: (validMax !== undefined && Number.isFinite(validMax)) ? validMax : undefined,
+      startDate: dateRange.from && !isNaN(dateRange.from.getTime())
         ? startOfDay(dateRange.from).toISOString()
         : undefined,
-      endDate: dateRange.to ? endOfDay(dateRange.to).toISOString() : undefined,
+      endDate: dateRange.to && !isNaN(dateRange.to.getTime()) ? endOfDay(dateRange.to).toISOString() : undefined,
       enabled: Boolean(walletAddress),
     };
   }, [

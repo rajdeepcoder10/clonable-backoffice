@@ -86,8 +86,9 @@ export const ServiceProviderTable = () => {
     const { setSelectedEscrow } = useEscrowContext();
 
     const handleRefresh = React.useCallback(() => {
+        if (!walletAddress) return;
         void refetch();
-    }, [refetch]);
+    }, [refetch, walletAddress]);
 
     const columns = React.useMemo<ColumnDef<Escrow>[]>(
         () => [

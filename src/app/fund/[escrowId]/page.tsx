@@ -29,11 +29,14 @@ export default function FundEscrowPage() {
   const { setSelectedEscrow, selectedEscrow } = useEscrowContext();
 
   React.useEffect(() => {
-    if (
-      escrowData &&
-      (!selectedEscrow || selectedEscrow.contractId !== escrowData.contractId)
-    ) {
-      setSelectedEscrow(escrowData);
+    if (escrowData) {
+      if (
+        !selectedEscrow || selectedEscrow.contractId !== escrowData.contractId
+      ) {
+        setSelectedEscrow(escrowData);
+      }
+    } else {
+      setSelectedEscrow(undefined);
     }
   }, [escrowData, selectedEscrow, setSelectedEscrow]);
 

@@ -2,112 +2,123 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
+import { useGetMultipleEscrowBalancesQuery } from "@/components/tw-blocks/tanstack/useGetMultipleEscrowBalances";
 import { useEscrowByContractIdQuery } from "@/components/tw-blocks/tanstack/useEscrowByContractIdQuery";
-import { GetEscrowsFromIndexerResponse as Escrow, MultiReleaseMilestone } from "@trustless-work/escrow/types";
+import { MultiReleaseMilestone } from "@trustless-work/escrow/types";
 import { useEscrowContext } from "@/components/tw-blocks/providers/EscrowProvider";
-import { EscrowSummary } from "@/components/tw-blocks/escrows/escrow-summary/EscrowSummary";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { formatCurrency } from "@/components/tw-blocks/helpers/format.helper";
-import { FundEscrowDialog } from "@/components/tw-blocks/escrows/single-multi-release/fund-escrow/dialog/FundEscrow";
-import { BalanceProgressBar } from "@/components/tw-blocks/escrows/indicators/balance-progress/bar/BalanceProgress";
+import { FundEscrowHeader } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowHeader";
+import { FundEscrowSidebar } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowSidebar";
+import { FundEscrowMain } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowMain";
+import { FundEscrowEmptyState } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowEmptyState";
+import { LoadEscrowModal } from "@/components/tw-blocks/escrows/fund-escrow/LoadEscrowModal";
 
 export default function FundEscrowPage() {
   const params = useParams();
-  const escrowId = params.escrowId as string;
+  const escrowId = Array.isArray(params.escrowId)
+    ? params.escrowId[0]
+    : params.escrowId;
 
-  const { data: escrow, isLoading, error } = useEscrowByContractIdQuery({
+  const [isLoadModalOpen, setIsLoadModalOpen] = React.useState(false);
+
+  const { data: escrowData } = useEscrowByContractIdQuery({
     contractId: escrowId,
+    enabled: !!escrowId,
   });
 
-  const { setSelectedEscrow } = useEscrowContext();
+  const { setSelectedEscrow, selectedEscrow } = useEscrowContext();
 
+  // Sync query data to context when it changes
   React.useEffect(() => {
-    if (escrow) {
-      setSelectedEscrow(escrow);
+    if (
+      escrowData &&
+      (!selectedEscrow || selectedEscrow.contractId !== escrowData.contractId)
+    ) {
+      setSelectedEscrow(escrowData);
     }
-  }, [escrow, setSelectedEscrow]);
+  }, [escrowData, selectedEscrow, setSelectedEscrow]);
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="text-center">Loading escrow...</div>
-      </div>
-    );
-  }
+  // Use escrow from context primarily (it's the single source of truth)
+  const currentEscrow = selectedEscrow;
+  const isMultiRelease = currentEscrow?.type === "multi-release";
 
-  if (error || !escrow) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="text-center text-destructive">
-          Failed to load escrow. Please check the contract ID.
-        </div>
-      </div>
-    );
-  }
+  // Get balance data for funding status
+  const { data: balanceData } = useGetMultipleEscrowBalancesQuery({
+    addresses: currentEscrow?.contractId ? [currentEscrow.contractId] : [],
+    enabled: !!currentEscrow?.contractId,
+  });
 
-  const isMultiRelease = escrow.type === "multi-release";
+  // Calculate target amount for progress
+  const targetAmount = React.useMemo(() => {
+    if (!currentEscrow) return 0;
+
+    if (isMultiRelease && currentEscrow.milestones) {
+      return (currentEscrow.milestones as MultiReleaseMilestone[]).reduce(
+        (sum, milestone) => sum + milestone.amount,
+        0,
+      );
+    }
+
+    return currentEscrow.amount || 0;
+  }, [currentEscrow, isMultiRelease]);
+
+  // Check if fully funded
+  const isFullyFunded = React.useMemo(() => {
+    if (!balanceData || !currentEscrow || targetAmount === 0) return false;
+    const currentBalance = Number(balanceData?.[0]?.balance ?? 0);
+    return currentBalance >= targetAmount;
+  }, [balanceData, currentEscrow, targetAmount]);
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold">Fund Escrow</h1>
-        <p className="text-muted-foreground mt-2">
-          Securely fund your escrow agreement
-        </p>
+    <div className="min-h-screen bg-background">
+      <FundEscrowHeader />
+
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Sidebar */}
+          <FundEscrowSidebar
+            currentEscrow={currentEscrow}
+            isFullyFunded={isFullyFunded}
+            onLoadModalOpen={() => setIsLoadModalOpen(true)}
+            onShare={() => {
+              const url = window.location.href;
+              if (navigator.share) {
+                navigator.share({
+                  title: "Fund Escrow",
+                  text: `Check out this escrow: ${currentEscrow?.contractId}`,
+                  url: url,
+                });
+              } else {
+                navigator.clipboard.writeText(url);
+              }
+            }}
+            onView={() => {
+              const url = `${window.location.origin}/escrows/${currentEscrow?.contractId}`;
+              window.open(url, "_blank");
+            }}
+          />
+
+          {/* Main Content Area */}
+          <div className="lg:col-span-2">
+            {currentEscrow ? (
+              <FundEscrowMain
+                currentEscrow={currentEscrow}
+                isMultiRelease={isMultiRelease}
+                isFullyFunded={isFullyFunded}
+                targetAmount={targetAmount}
+              />
+            ) : (
+              <FundEscrowEmptyState
+                onLoadEscrow={() => setIsLoadModalOpen(true)}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
-      <EscrowSummary escrow={escrow} />
-
-      {/* Milestones Breakdown */}
-      {isMultiRelease && escrow.milestones && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Milestones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {(escrow.milestones as MultiReleaseMilestone[]).map((milestone: MultiReleaseMilestone, index: number) => (
-                <div key={index} className="flex items-center justify-between p-4 border rounded">
-                  <div>
-                    <p className="font-medium">{milestone.description}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatCurrency(milestone.amount, escrow.trustline?.symbol || "")}
-                    </p>
-                  </div>
-                  <Badge variant="outline">{milestone.status || "Pending"}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Funding Progress Indicator */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Funding Progress</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BalanceProgressBar
-            contractId={escrow.contractId}
-            target={isMultiRelease
-              ? escrow.milestones?.reduce((acc, milestone) => acc + (milestone as MultiReleaseMilestone).amount, 0) || 0
-              : escrow.amount}
-            currency={escrow.trustline?.symbol || ""}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Fund Escrow Action */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Fund Escrow</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FundEscrowDialog />
-        </CardContent>
-      </Card>
+      <LoadEscrowModal
+        isOpen={isLoadModalOpen}
+        onClose={() => setIsLoadModalOpen(false)}
+      />
     </div>
   );
 }

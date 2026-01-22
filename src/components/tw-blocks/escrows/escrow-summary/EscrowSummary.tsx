@@ -3,8 +3,11 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { GetEscrowsFromIndexerResponse as Escrow, MultiReleaseMilestone } from "@trustless-work/escrow/types";
 import { formatCurrency } from "@/components/tw-blocks/helpers/format.helper";
+import { useCopy } from "@/components/tw-blocks/helpers/useCopy";
+import { Copy } from "lucide-react";
 
 interface EscrowSummaryProps {
   escrow: Escrow;
@@ -12,10 +15,11 @@ interface EscrowSummaryProps {
 
 export const EscrowSummary = ({ escrow }: EscrowSummaryProps) => {
   const isMultiRelease = escrow.type === "multi-release";
+  const { copyToClipboard } = useCopy();
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-border/60 shadow-sm hover:shadow-md transition-shadow">
+      <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between">
           <span>Escrow Summary</span>
           <Badge variant={isMultiRelease ? "default" : "secondary"}>
@@ -25,11 +29,23 @@ export const EscrowSummary = ({ escrow }: EscrowSummaryProps) => {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          <div className="col-span-2">
             <label className="text-sm font-medium text-muted-foreground">
               Escrow ID
             </label>
-            <p className="text-sm font-mono">{escrow.contractId}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm font-mono truncate flex-1" title={escrow.contractId}>
+                {escrow.contractId}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(escrow.contractId || "")}
+                className="h-6 w-6 p-0"
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-muted-foreground">

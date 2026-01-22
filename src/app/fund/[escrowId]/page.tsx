@@ -11,6 +11,7 @@ import { FundEscrowSidebar } from "@/components/tw-blocks/escrows/fund-escrow/Fu
 import { FundEscrowMain } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowMain";
 import { FundEscrowEmptyState } from "@/components/tw-blocks/escrows/fund-escrow/FundEscrowEmptyState";
 import { LoadEscrowModal } from "@/components/tw-blocks/escrows/fund-escrow/LoadEscrowModal";
+import { toast } from "sonner";
 
 export default function FundEscrowPage() {
   const params = useParams();
@@ -73,21 +74,26 @@ export default function FundEscrowPage() {
             currentEscrow={currentEscrow}
             isFullyFunded={isFullyFunded}
             onLoadModalOpen={() => setIsLoadModalOpen(true)}
-            onShare={() => {
+            onShare={async () => {
               const url = `https://viewer.trustlesswork.com/${currentEscrow?.contractId}`;
-              if (navigator.share) {
-                navigator.share({
-                  title: "Fund Escrow",
-                  text: `Check out this escrow: ${currentEscrow?.contractId}`,
-                  url: url,
-                });
-              } else {
-                navigator.clipboard.writeText(url);
+              try {
+                if (navigator.share) {
+                  await navigator.share({
+                    title: "Fund Escrow",
+                    text: `Check out this escrow: ${currentEscrow?.contractId}`,
+                    url: url,
+                  });
+                } else {
+                  await navigator.clipboard.writeText(url);
+                  toast.success("Escrow link copied to clipboard");
+                }
+              } catch {
+                toast.error("Failed to share or copy the escrow link");
               }
             }}
             onView={() => {
               const url = `https://viewer.trustlesswork.com/${currentEscrow?.contractId}`;
-              window.open(url, "_blank");
+              window.open(url, "_blank", "noopener,noreferrer");
             }}
           />
 

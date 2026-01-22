@@ -48,7 +48,7 @@ export function LoadEscrowModal({ isOpen, onClose }: LoadEscrowModalProps) {
           </p>
         </DialogHeader>
         <Suspense fallback={null}>
-          <LoadEscrowFormNoSSR  />
+          <LoadEscrowFormNoSSR onSuccess={onClose} />
         </Suspense>
       </DialogContent>
     </Dialog>

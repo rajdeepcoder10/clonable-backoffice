@@ -77,7 +77,7 @@ export const EscrowSummary = ({ escrow }: EscrowSummaryProps) => {
                   ) || 0,
                   escrow.trustline?.symbol || ""
                 )
-              : formatCurrency(escrow.amount, escrow.trustline?.symbol || "")}
+              : formatCurrency(escrow.amount ?? 0, escrow.trustline?.symbol || "")}
           </p>
         </div>
       </CardContent>

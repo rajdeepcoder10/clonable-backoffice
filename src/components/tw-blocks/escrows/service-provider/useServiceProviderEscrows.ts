@@ -1,0 +1,369 @@
+"use client";
+
+import React from "react";
+import { startOfDay, endOfDay, format } from "date-fns";
+import type { DateRange as DayPickerDateRange } from "react-day-picker";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { SortingState } from "@tanstack/react-table";
+import { useWalletContext } from "../../wallet-kit/WalletProvider";
+import { useEscrowsByRoleQuery } from "../../tanstack/useEscrowsByRoleQuery";
+import { GetEscrowsFromIndexerResponse as Escrow } from "@trustless-work/escrow/types";
+
+export type EscrowOrderBy = "createdAt" | "updatedAt" | "amount";
+export type EscrowOrderDirection = "asc" | "desc";
+export type EscrowType = "single-release" | "multi-release" | "all";
+export type EscrowStatus =
+  | "working"
+  | "pendingRelease"
+  | "released"
+  | "resolved"
+  | "inDispute"
+  | "all";
+export type DateRange = DayPickerDateRange;
+
+/**
+ * Custom hook for fetching escrows where the connected wallet is the service provider.
+ * This hook is specifically designed for the Service Provider Workspace page.
+ * The role is hardcoded to "serviceProvider" and cannot be changed by the user.
+ */
+export function useServiceProviderEscrows() {
+  const { walletAddress } = useWalletContext();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [page, setPage] = React.useState<number>(1);
+  const [orderBy, setOrderBy] = React.useState<EscrowOrderBy>("createdAt");
+  const [orderDirection, setOrderDirection] =
+    React.useState<EscrowOrderDirection>("desc");
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [title, setTitle] = React.useState<string>("");
+  const [engagementId, setEngagementId] = React.useState<string>("");
+  const [isActive, setIsActive] = React.useState<boolean>(true);
+  const [validateOnChain, setValidateOnChain] = React.useState<boolean>(true);
+  const [type, setType] = React.useState<EscrowType>("all");
+  const [status, setStatus] = React.useState<EscrowStatus>("all");
+  const [minAmount, setMinAmount] = React.useState<string>("");
+  const [maxAmount, setMaxAmount] = React.useState<string>("");
+  const [dateRange, setDateRange] = React.useState<DateRange>({
+    from: undefined,
+    to: undefined,
+  });
+
+  // Role is always "serviceProvider" for this workspace
+  const role = "serviceProvider" as const;
+
+  function useDebouncedValue<T>(value: T, delayMs: number) {
+    const [debounced, setDebounced] = React.useState<T>(value);
+    React.useEffect(() => {
+      const id = setTimeout(() => setDebounced(value), delayMs);
+      return () => clearTimeout(id);
+    }, [value, delayMs]);
+    return debounced;
+  }
+
+  const debouncedTitle = useDebouncedValue(title, 400);
+  const debouncedEngagementId = useDebouncedValue(engagementId, 400);
+  const debouncedMinAmount = useDebouncedValue(minAmount, 400);
+  const debouncedMaxAmount = useDebouncedValue(maxAmount, 400);
+
+  React.useEffect(() => {
+    if (!searchParams) return;
+    const qp = new URLSearchParams(searchParams.toString());
+    const qpPage = Number(qp.get("page") || 1);
+    const qpOrderBy = (qp.get("orderBy") as EscrowOrderBy) || "createdAt";
+    const qpOrderDir =
+      (qp.get("orderDirection") as EscrowOrderDirection) || "desc";
+    const qpTitle = qp.get("title") || "";
+    const qpEng = qp.get("engagementId") || "";
+    const qpActive = qp.get("isActive");
+    const qpValidateOnChain = qp.get("validateOnChain");
+
+    // Validate Enums
+    const rawType = qp.get("type");
+    const allowedTypes = ["single-release", "multi-release", "all"];
+    const qpType = (allowedTypes.includes(rawType || "")
+      ? rawType
+      : "all") as EscrowType;
+
+    const rawStatus = qp.get("status");
+    const allowedStatuses = ["working", "pendingRelease", "released", "resolved", "inDispute", "all"];
+    const qpStatus = (allowedStatuses.includes(rawStatus || "")
+      ? rawStatus
+      : "all") as EscrowStatus;
+
+    // Validate Numbers
+    const rawMin = qp.get("minAmount");
+    const parsedMin = rawMin ? Number(rawMin) : NaN;
+    const qpMin = Number.isFinite(parsedMin) ? rawMin! : "";
+
+    const rawMax = qp.get("maxAmount");
+    const parsedMax = rawMax ? Number(rawMax) : NaN;
+    const qpMax = Number.isFinite(parsedMax) ? rawMax! : "";
+
+    // Validate Dates
+    const rawStart = qp.get("startDate");
+    const dStart = rawStart ? new Date(rawStart) : undefined;
+    const rawEnd = qp.get("endDate");
+    const dEnd = rawEnd ? new Date(rawEnd) : undefined;
+
+    setPage(Number.isFinite(qpPage) && qpPage > 0 ? qpPage : 1);
+    setOrderBy(
+      ["createdAt", "updatedAt", "amount"].includes(qpOrderBy)
+        ? qpOrderBy
+        : "createdAt"
+    );
+    setOrderDirection(qpOrderDir === "asc" ? "asc" : "desc");
+    setTitle(qpTitle);
+    setEngagementId(qpEng);
+    // Keep boolean/null logic
+    setIsActive(qpActive === null ? true : qpActive === "true");
+    setValidateOnChain(
+      qpValidateOnChain === null ? true : qpValidateOnChain === "true"
+    );
+    setType(qpType);
+    setStatus(qpStatus);
+    setMinAmount(qpMin);
+    setMaxAmount(qpMax);
+    setDateRange({
+      from: dStart && !isNaN(dStart.getTime()) ? dStart : undefined,
+      to: dEnd && !isNaN(dEnd.getTime()) ? dEnd : undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const stableSearchParams = React.useMemo(
+    () => ({
+      page,
+      orderBy,
+      orderDirection,
+      title: debouncedTitle,
+      engagementId: debouncedEngagementId,
+      isActive,
+      validateOnChain,
+      type,
+      status,
+      minAmount: debouncedMinAmount,
+      maxAmount: debouncedMaxAmount,
+      startDate: dateRange.from
+        ? startOfDay(dateRange.from).toISOString()
+        : undefined,
+      endDate: dateRange.to ? endOfDay(dateRange.to).toISOString() : undefined,
+    }),
+    [
+      page,
+      orderBy,
+      orderDirection,
+      debouncedTitle,
+      debouncedEngagementId,
+      isActive,
+      validateOnChain,
+      type,
+      status,
+      debouncedMinAmount,
+      debouncedMaxAmount,
+      dateRange.from,
+      dateRange.to,
+    ]
+  );
+
+  const debouncedSearchParams = useDebouncedValue(stableSearchParams, 200);
+
+  const lastQueryStringRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (!pathname) return;
+    const qp = new URLSearchParams();
+    qp.set("page", String(debouncedSearchParams.page ?? 1));
+    qp.set("orderBy", String(debouncedSearchParams.orderBy ?? "createdAt"));
+    qp.set(
+      "orderDirection",
+      String(debouncedSearchParams.orderDirection ?? "desc")
+    );
+    if (debouncedSearchParams.title)
+      qp.set("title", debouncedSearchParams.title);
+    if (debouncedSearchParams.engagementId)
+      qp.set("engagementId", debouncedSearchParams.engagementId);
+    qp.set("isActive", String(debouncedSearchParams.isActive));
+    qp.set("validateOnChain", String(debouncedSearchParams.validateOnChain));
+    if (debouncedSearchParams.type && debouncedSearchParams.type !== "all")
+      qp.set("type", debouncedSearchParams.type);
+    if (debouncedSearchParams.status && debouncedSearchParams.status !== "all")
+      qp.set("status", debouncedSearchParams.status);
+    if (debouncedSearchParams.minAmount)
+      qp.set("minAmount", String(debouncedSearchParams.minAmount));
+    if (debouncedSearchParams.maxAmount)
+      qp.set("maxAmount", String(debouncedSearchParams.maxAmount));
+    if (debouncedSearchParams.startDate)
+      qp.set("startDate", String(debouncedSearchParams.startDate));
+    if (debouncedSearchParams.endDate)
+      qp.set("endDate", String(debouncedSearchParams.endDate));
+
+    const newQs = qp.toString();
+    if (lastQueryStringRef.current !== newQs) {
+      lastQueryStringRef.current = newQs;
+      router.replace(`${pathname}?${newQs}`);
+    }
+  }, [pathname, router, debouncedSearchParams]);
+
+  const formattedRangeLabel = React.useMemo(() => {
+    if (!dateRange?.from && !dateRange?.to) return "Date range";
+    const fromStr = dateRange.from
+      ? format(dateRange.from, "LLL dd, yyyy")
+      : "";
+    const toStr = dateRange.to ? format(dateRange.to, "LLL dd, yyyy") : "";
+    return [fromStr, toStr].filter(Boolean).join(" – ") || "Date range";
+  }, [dateRange]);
+
+  const params = React.useMemo(() => {
+    const validMin = debouncedMinAmount ? Number(debouncedMinAmount) : undefined;
+    const validMax = debouncedMaxAmount ? Number(debouncedMaxAmount) : undefined;
+
+    return {
+      roleAddress: walletAddress ?? "",
+      role,
+      page,
+      orderBy,
+      orderDirection,
+      title: debouncedTitle || undefined,
+      engagementId: debouncedEngagementId || undefined,
+      isActive,
+      validateOnChain,
+      type: (["single-release", "multi-release"].includes(type) ? type : undefined) as
+        | undefined
+        | "single-release"
+        | "multi-release",
+      status: (["working", "pendingRelease", "released", "resolved", "inDispute"].includes(status) ? status : undefined) as
+        | undefined
+        | "working"
+        | "pendingRelease"
+        | "released"
+        | "resolved"
+        | "inDispute",
+      minAmount: (validMin !== undefined && Number.isFinite(validMin)) ? validMin : undefined,
+      maxAmount: (validMax !== undefined && Number.isFinite(validMax)) ? validMax : undefined,
+      startDate: dateRange.from && !isNaN(dateRange.from.getTime())
+        ? startOfDay(dateRange.from).toISOString()
+        : undefined,
+      endDate: dateRange.to && !isNaN(dateRange.to.getTime()) ? endOfDay(dateRange.to).toISOString() : undefined,
+      enabled: Boolean(walletAddress),
+    };
+  }, [
+    walletAddress,
+    role,
+    page,
+    orderBy,
+    orderDirection,
+    debouncedTitle,
+    debouncedEngagementId,
+    isActive,
+    validateOnChain,
+    type,
+    status,
+    debouncedMinAmount,
+    debouncedMaxAmount,
+    dateRange,
+  ]);
+
+  /**
+   * Call the query to get the escrows from the Trustless Work Indexer
+   * where the connected wallet is the service provider
+   */
+  const query = useEscrowsByRoleQuery(params);
+  const nextPageQuery = useEscrowsByRoleQuery({ ...params, page: page + 1 });
+
+  const didMountValidateRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!didMountValidateRef.current) {
+      didMountValidateRef.current = true;
+      return;
+    }
+    query.refetch();
+    nextPageQuery.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validateOnChain]);
+
+  const onClearFilters = React.useCallback(() => {
+    setTitle("");
+    setEngagementId("");
+    setIsActive(true);
+    setValidateOnChain(true);
+    setType("all");
+    setStatus("all");
+    setMinAmount("");
+    setMaxAmount("");
+    setDateRange({ from: undefined, to: undefined });
+    setPage(1);
+    setOrderBy("createdAt");
+    setOrderDirection("desc");
+    setSorting([]);
+  }, []);
+
+  const handleSortingChange = React.useCallback(
+    (updater: SortingState | ((old: SortingState) => SortingState)) => {
+      setSorting((prev) => {
+        const next =
+          typeof updater === "function"
+            ? (updater as (old: SortingState) => SortingState)(prev)
+            : updater;
+        const first = next[0];
+        if (first) {
+          if (
+            first.id === "amount" ||
+            first.id === "createdAt" ||
+            first.id === "updatedAt"
+          ) {
+            setOrderBy(first.id as EscrowOrderBy);
+            setOrderDirection(first.desc ? "desc" : "asc");
+          }
+        } else {
+          setOrderBy("createdAt");
+          setOrderDirection("desc");
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  return {
+    walletAddress,
+    data: query.data ?? ([] as Escrow[]),
+    isLoading: query.isLoading,
+    isError: query.isError,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+    nextData: nextPageQuery.data ?? [],
+    isFetchingNext: nextPageQuery.isFetching,
+    page,
+    setPage,
+    orderBy,
+    setOrderBy,
+    orderDirection,
+    setOrderDirection,
+    sorting,
+    setSorting,
+    title,
+    setTitle,
+    engagementId,
+    setEngagementId,
+    isActive,
+    setIsActive,
+    validateOnChain,
+    setValidateOnChain,
+    type,
+    setType,
+    status,
+    setStatus,
+    minAmount,
+    setMinAmount,
+    maxAmount,
+    setMaxAmount,
+    dateRange,
+    setDateRange,
+    formattedRangeLabel,
+    role,
+    onClearFilters,
+    handleSortingChange,
+  } as const;
+}
